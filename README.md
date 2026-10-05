@@ -1,12 +1,7 @@
-# ur3_llm_control – Bài 03: UR3e + Gripper + Camera, điều khiển bằng LLM
+- Nhiệm vụ: P = 72 mod 6 = **0** → Zone A = red, Zone B = yellow, Zone C = blue
+- Video demo: https://drive.google.com/file/d/1FGfWvSGGuMDtMpVdWTMnC-y5MIgk3V_K/view?usp=sharing
 
-- Sinh viên: **Nguyễn Trần Thu Thảo** – MSSV **23020772**
-- Nhiệm vụ cá nhân: P = 72 mod 6 = **0** → Zone A = **red**, Zone B = **yellow**, Zone C = **blue**
-- Môi trường: Ubuntu 22.04 (WSL2) · ROS 2 Humble · MoveIt 2 · Gazebo Classic 11 · UR3e · LLM qua 9Router
-- Video demo: `<link Google Drive>`
-
-Bài 03 phát triển tiếp từ Bài 02: thêm **gripper thật** (gắp bằng ma sát), **camera** để biết vật
-đang ở đâu, 5 khối nhưng chỉ có 3 zone nên robot phải tự xử lý khi zone đích đang bị chiếm.
+Bài 03 phát triển tiếp từ Bài 02: thêm gripper, camera đang ở đâu, 5 khối nhưng chỉ có 3 zone nên robot phải tự xử lý khi zone đích đang bị chiếm.
 
 ## 1. Kiến trúc
 
@@ -29,7 +24,7 @@ UR3e + gripper (Gazebo)
 ```
 
 LLM chỉ chọn skill, tham số và thứ tự. LLM không sinh góc khớp hay quỹ đạo.
-Vị trí các khối **không khai báo cứng**: lần nào cũng lấy từ camera.
+Vị trí các khối không khai báo cứng mà lấy từ camera.
 
 ## 2. Môi trường mô phỏng
 
@@ -47,22 +42,18 @@ World Gazebo được sinh tự động từ `config/scene.yaml` (`world_gen.py`
 
 ### Gripper
 
-- Mỗi ngón là một khớp trượt, điều khiển bằng **lực** (`effort_controllers/JointGroupEffortController`):
-  gửi +15 N là mở, −15 N là kẹp.
-- Vật được giữ hoàn toàn bằng **lực ma sát** giữa ngón tay và khối. Chương trình không đặt pose cho vật.
+- Mỗi ngón là một khớp trượt, điều khiển bằng lực (`effort_controllers/JointGroupEffortController`): gửi +15 N là mở, −15 N là kẹp.
+- Vật được giữ hoàn toàn bằng lực ma sát giữa ngón tay và khối. Chương trình không đặt pose cho vật.
 - Biết kẹp được hay chưa dựa vào khe hở giữa 2 ngón (đọc từ `/joint_states`):
-  khe ≈ 4 cm là đang kẹp khối, khe gần 0 là kẹp trượt (`GRASP_FAILED`).
-  Sau khi nhấc lên cũng kiểm tra lại một lần để biết vật có bị rơi không.
-- Cánh tay dùng `joint_trajectory_controller` với giao diện **velocity** (có PID bám vị trí).
-  Lúc đầu em dùng position thì khối bị tuột: với position, Gazebo dịch các link tức thời,
-  link không có vận tốc nên ma sát không kéo được khối lên. Chuyển sang velocity thì gắp được.
+  khe ≈ 4 cm là đang kẹp khối, khe gần 0 là kẹp trượt (`GRASP_FAILED`). Sau khi nhấc lên cũng kiểm tra lại một lần để biết vật có bị rơi không.
+- Cánh tay dùng `joint_trajectory_controller` với giao diện velocity (có PID bám vị trí).
+  Lúc đầu dùng position khối bị tuột: với position, Gazebo dịch các link tức thời, link không có vận tốc nên ma sát không kéo được khối lên. Chuyển sang velocity thì gắp được.
 
 ### Camera
 
 1. Đổi ảnh sang HSV, lọc theo ngưỡng màu của từng khối (khai báo trong `scene.yaml`).
 2. Tìm vùng màu lớn nhất, lấy tâm và góc xoay (`cv2.minAreaRect`).
-3. Đổi pixel → tọa độ trên bàn: từ vị trí camera (đã biết) và ma trận K (`camera_info`),
-   kéo một tia qua pixel rồi cắt với mặt phẳng mặt trên của khối.
+3. Đổi pixel → tọa độ trên bàn: từ vị trí camera (đã biết) và ma trận K (`camera_info`), kéo một tia qua pixel rồi cắt với mặt phẳng mặt trên của khối.
 4. Kết quả nằm ngoài mặt bàn thì bỏ qua (tránh nhận nhầm màu trên thân robot).
 
 Sai số đo được so với vị trí thật trong Gazebo: dưới 7 mm.
@@ -200,8 +191,8 @@ Terminal 3 – node LLM:
 ros2 run ur3_llm_control llm_robot_node
 ```
 ```
-Command> Put the red cube in Zone B.
-Command> Hãy lấy khối màu tím và đặt nó vào ô A.
+Command> Put red cube in Zone B.
+Command> Lấy khốI tím và đặt nó vào ô A.
 Command> Arrange all objects according to my student ID.
 Command> Put the orange cube in zone D.
 Command> state
@@ -214,10 +205,10 @@ Muốn các khối về chỗ cũ: tắt terminal 2, 3 rồi chạy lại.
 Test không cần Gazebo:
 ```bash
 cd ~/ur3_ws/src/ur3_llm_control && python3 -m pytest test -q
-ros2 run ur3_llm_control offline_cli "Put the red cube in Zone B."
+ros2 run ur3_llm_control offline_cli "Put red cube in Zone B."
 ```
 
-**Trên WSL2:** nếu cửa sổ Gazebo / RViz trống thì thêm `LIBGL_ALWAYS_SOFTWARE=1` trước lệnh launch.
+Trên WSL2: nếu cửa sổ Gazebo / RViz trống thì thêm `LIBGL_ALWAYS_SOFTWARE=1` trước lệnh launch.
 
 ## 9. Kết quả
 
