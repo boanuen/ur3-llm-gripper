@@ -1,0 +1,56 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    gripper_controller:
+      type: effort_controllers/JointGroupEffortController
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    # Dieu khien VAN TOC (khong dung position): voi position, Gazebo dat thang vi tri khop,
+    # cac link khong co van toc -> ma sat khong keo duoc vat dang kep. Dung velocity thi
+    # link chuyen dong that, vat duoc ngon tay keo theo bang ma sat.
+    command_interfaces:
+      - velocity
+    state_interfaces:
+      - position
+      - velocity
+    gains:   # van toc lenh = van toc quy dao + p * sai so vi tri + ...
+      shoulder_pan_joint:  { p: 10.0, i: 0.5, d: 0.0, i_clamp: 0.2, ff_velocity_scale: 1.0 }
+      shoulder_lift_joint: { p: 10.0, i: 0.5, d: 0.0, i_clamp: 0.2, ff_velocity_scale: 1.0 }
+      elbow_joint:         { p: 10.0, i: 0.5, d: 0.0, i_clamp: 0.2, ff_velocity_scale: 1.0 }
+      wrist_1_joint:       { p: 10.0, i: 0.5, d: 0.0, i_clamp: 0.2, ff_velocity_scale: 1.0 }
+      wrist_2_joint:       { p: 10.0, i: 0.5, d: 0.0, i_clamp: 0.2, ff_velocity_scale: 1.0 }
+      wrist_3_joint:       { p: 10.0, i: 0.5, d: 0.0, i_clamp: 0.2, ff_velocity_scale: 1.0 }
+    state_publish_rate: 100.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    constraints:
+      stopped_velocity_tolerance: 0.2
+      goal_time: 0.0
+      shoulder_pan_joint: { trajectory: 0.2, goal: 0.1 }
+      shoulder_lift_joint: { trajectory: 0.2, goal: 0.1 }
+      elbow_joint: { trajectory: 0.2, goal: 0.1 }
+      wrist_1_joint: { trajectory: 0.2, goal: 0.1 }
+      wrist_2_joint: { trajectory: 0.2, goal: 0.1 }
+      wrist_3_joint: { trajectory: 0.2, goal: 0.1 }
+
+# gripper: gui luc (N) cho 2 ngon tay. Duong = mo, am = kep.
+gripper_controller:
+  ros__parameters:
+    joints:
+      - finger_l_joint
+      - finger_r_joint

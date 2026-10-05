@@ -1,0 +1,57 @@
+# Mo ta moi truong (don vi: m, frame = world = base cua robot, robot nhin theo +x)
+frame: world
+group: ur_manipulator
+ee: tool0
+
+table: {x: 0.30, y: 0.0, sx: 0.34, sy: 0.80, h: 0.10}   # tam, kich thuoc, chieu cao mat ban
+cube: 0.04                                              # canh khoi lap phuong
+
+# Vung dat vat (co dinh tren ban). Zone nao trong / co vat do CAMERA xac dinh.
+zones:
+  zone_a: {xy: [0.38,  0.16], size: 0.09}
+  zone_b: {xy: [0.38,  0.00], size: 0.09}
+  zone_c: {xy: [0.38, -0.16], size: 0.09}
+
+# Cac khoi: mau RGBA (de ve trong Gazebo) va nguong HSV (de camera nhan dang, OpenCV: H 0-180)
+objects:
+  red_cube:    {rgba: [0.9, 0.1, 0.1, 1], hsv: [[0, 150, 60, 8, 255, 255], [172, 150, 60, 180, 255, 255]]}
+  yellow_cube: {rgba: [0.95, 0.85, 0.1, 1], hsv: [[20, 150, 60, 35, 255, 255]]}
+  green_cube:  {rgba: [0.1, 0.8, 0.1, 1], hsv: [[45, 150, 40, 80, 255, 255]]}
+  blue_cube:   {rgba: [0.1, 0.3, 0.9, 1], hsv: [[105, 150, 40, 125, 255, 255]]}
+  purple_cube: {rgba: [0.6, 0.1, 0.8, 1], hsv: [[132, 120, 40, 160, 255, 255]]}
+
+# CHI dung de sinh world Gazebo (vi tri ban dau cua khoi).
+# Chuong trinh KHONG doc cac gia tri nay de lap ke hoach: vi tri vat lay tu camera.
+spawn:
+  red_cube:    [0.22, -0.22]
+  yellow_cube: [0.22,  0.06]
+  green_cube:  [0.38, -0.16]    # dang nam trong zone_c
+  blue_cube:   [0.38,  0.00]    # dang nam trong zone_b
+  purple_cube: [0.24,  0.26]
+
+# Camera nhin thang xuong ban (vi tri da biet = hieu chinh ngoai)
+camera:
+  xyz: [0.30, 0.0, 1.0]
+  rpy: [0.0, 1.5708, 0.0]
+  hfov: 1.0
+  width: 640
+  height: 480
+  topic: /camera/top/image_raw
+  info_topic: /camera/top/camera_info
+
+# Gripper
+gripper:
+  len: 0.08        # tu tool0 toi dau ngon tay
+  tip: 0.008       # dau ngon cach mat ban khi gap
+  force: 15.0      # luc kep moi ngon (N)
+  open: 0.08       # khoang ho giua 2 ngon khi mo het (m)
+  min_gap: 0.025   # khoang ho nho hon muc nay => ngon dong het, khong cam duoc vat
+
+home: [1.57, -1.57, 1.57, -1.57, -1.57, 0.0]   # canh tay quay sang ben, ngoai tam nhin camera
+seed: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]    # tu the goc de tinh IK (tool huong xuong, tren ban)
+tool_yaw: -1.5708   # goc xoay tool0 o tu the seed, luc nay 2 ngon tay song song truc x/y cua ban
+
+up: 0.10        # do cao tiep can phia tren vat
+shrink: 0.008   # thu nho hop va cham cua khoi khi dang cam
+gap: 0.10       # khoang cach toi thieu giua vi tri trong va vat khac
+vel: 0.25       # ti le van toc / gia toc

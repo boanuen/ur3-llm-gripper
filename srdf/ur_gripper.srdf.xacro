@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SRDF cua UR + bo qua kiem tra va cham giua cac link cua gripper va co tay
+     (cac link nay luon cham / gan nhau). -->
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur">
+  <xacro:include filename="$(find ur_moveit_config)/srdf/ur_macro.srdf.xacro"/>
+  <xacro:ur_srdf name="ur" prefix=""/>
+
+  <disable_collisions link1="grip_base" link2="wrist_3_link" reason="Adjacent"/>
+  <disable_collisions link1="grip_base" link2="wrist_2_link" reason="Never"/>
+  <disable_collisions link1="grip_base" link2="wrist_1_link" reason="Never"/>
+  <disable_collisions link1="grip_base" link2="finger_l" reason="Adjacent"/>
+  <disable_collisions link1="grip_base" link2="finger_r" reason="Adjacent"/>
+  <disable_collisions link1="finger_l" link2="finger_r" reason="Never"/>
+  <disable_collisions link1="finger_l" link2="wrist_3_link" reason="Never"/>
+  <disable_collisions link1="finger_r" link2="wrist_3_link" reason="Never"/>
+  <disable_collisions link1="finger_l" link2="wrist_2_link" reason="Never"/>
+  <disable_collisions link1="finger_r" link2="wrist_2_link" reason="Never"/>
+  <disable_collisions link1="finger_l" link2="wrist_1_link" reason="Never"/>
+  <disable_collisions link1="finger_r" link2="wrist_1_link" reason="Never"/>
+</robot>
