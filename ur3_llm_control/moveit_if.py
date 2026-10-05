@@ -1,13 +1,4 @@
-"""Giao tiep voi MoveIt 2 va gripper.
-
-Dung cac action/service co san cua move_group:
-  /move_action             lap ke hoach + chay (co check va cham, joint limit)
-  /compute_ik              tinh goc khop tu vi tri tool0
-  /compute_cartesian_path  di thang len / xuong
-  /execute_trajectory      chay duong di thang do
-  /apply_planning_scene    them ban, khoi; gan / bo khoi khoi tool0
-Gripper: gui luc vao /gripper_controller/commands, doc do mo ngon tay tu /joint_states.
-"""
+"""Giao tiep MoveIt 2 va gripper."""
 import math
 import threading
 import time
@@ -34,15 +25,20 @@ FINGERS = ['finger_l_joint', 'finger_r_joint']
 
 def mk_pose(p, q=(0.0, 0.0, 0.0, 1.0)):
     m = Pose()
-    m.position.x, m.position.y, m.position.z = [float(v) for v in p]
-    m.orientation.x, m.orientation.y, m.orientation.z, m.orientation.w = [float(v) for v in q]
+    m.position.x = float(p[0])
+    m.position.y = float(p[1])
+    m.position.z = float(p[2])
+    m.orientation.x = float(q[0])
+    m.orientation.y = float(q[1])
+    m.orientation.z = float(q[2])
+    m.orientation.w = float(q[3])
     return m
 
 
 def mk_box(name, size, p, yaw=0.0, frame='world', op=CollisionObject.ADD):
     b = SolidPrimitive()
     b.type = SolidPrimitive.BOX
-    b.dimensions = [float(s) for s in size]
+    b.dimensions = [float(size[0]), float(size[1]), float(size[2])]
     co = CollisionObject()
     co.header.frame_id = frame
     co.id = name
@@ -54,7 +50,7 @@ def mk_box(name, size, p, yaw=0.0, frame='world', op=CollisionObject.ADD):
 
 
 def wait(fut, t):
-    """Cho future xong (node duoc spin o thread khac nen chi can ngu cho)."""
+    # cho future xong (node spin o thread khac)
     end = time.time() + t
     while not fut.done():
         if time.time() > end:
@@ -66,10 +62,10 @@ def wait(fut, t):
 class MoveIt:
     def __init__(self, node, sc):
         self.sc = sc
-        cb = ReentrantCallbackGroup()   # de cac callback chay song song, khong chan nhau
+        cb = ReentrantCallbackGroup()
         self.mv = ActionClient(node, MoveGroup, '/move_action', callback_group=cb)
         self.ex = ActionClient(node, ExecuteTrajectory, '/execute_trajectory', callback_group=cb)
-        # chi dung de biet controller cua canh tay da bat chua
+        # chi de kiem tra controller da bat chua
         self.jtc = ActionClient(node, FollowJointTrajectory,
                                 '/joint_trajectory_controller/follow_joint_trajectory',
                                 callback_group=cb)
@@ -78,7 +74,7 @@ class MoveIt:
         self.ps = node.create_client(ApplyPlanningScene, '/apply_planning_scene',
                                      callback_group=cb)
         self.ikc = node.create_client(GetPositionIK, '/compute_ik', callback_group=cb)
-        self.grip_pub = node.create_publisher(Float64MultiArray, '/gripper_controller/commands', 10)
+        self.gp = node.create_publisher(Float64MultiArray, '/gripper_controller/commands', 10)
         node.create_subscription(JointState, '/joint_states', self.on_js, 10, callback_group=cb)
         self.tfb = tf2_ros.Buffer()
         self.tfl = tf2_ros.TransformListener(self.tfb, node)
@@ -87,8 +83,8 @@ class MoveIt:
 
     def on_js(self, m):
         with self.lock:
-            for n, p in zip(m.name, m.position):
-                self.js[n] = p
+            for i in range(len(m.name)):
+                self.js[m.name[i]] = m.position[i]
 
     def joints(self, names):
         with self.lock:
@@ -98,29 +94,36 @@ class MoveIt:
         return self.joints(FINGERS)
 
     def at(self, q, tol=0.05):
-        """Robot dang o tu the q khong."""
+        # robot dang o tu the q?
         cur = self.joints(JOINTS)
-        return None not in cur and all(abs(a - b) < tol for a, b in zip(cur, q))
+        if None in cur:
+            return False
+        for i in range(6):
+            if abs(cur[i] - q[i]) >= tol:
+                return False
+        return True
 
     def tool(self):
-        """Vi tri + huong hien tai cua tool0 (lay tu TF)."""
+        # vi tri + huong tool0 tu TF
         try:
             t = self.tfb.lookup_transform(self.sc.frame, self.sc.ee, Time(),
                                           timeout=Duration(seconds=0.5))
         except Exception:
             return None
-        a, r = t.transform.translation, t.transform.rotation
+        a = t.transform.translation
+        r = t.transform.rotation
         return (a.x, a.y, a.z), (r.x, r.y, r.z, r.w)
 
     def wait_ready(self, t=180.0):
-        """Cho move_group, controller va joint_states san sang."""
+        # cho move_group, controller, joint_states
         end = time.time() + t
         while time.time() < end:
-            if (self.mv.server_is_ready() and self.ex.server_is_ready()
-                    and self.jtc.server_is_ready() and self.cart.service_is_ready()
-                    and self.ps.service_is_ready() and self.ikc.service_is_ready()
-                    and None not in self.fingers() and self.tool() is not None):
-                time.sleep(2.0)         # cho move_group nhan controller xong
+            ok = (self.mv.server_is_ready() and self.ex.server_is_ready()
+                  and self.jtc.server_is_ready() and self.cart.service_is_ready()
+                  and self.ps.service_is_ready() and self.ikc.service_is_ready()
+                  and None not in self.fingers() and self.tool() is not None)
+            if ok:
+                time.sleep(2.0)
                 return True
             time.sleep(0.5)
         return False
@@ -135,13 +138,13 @@ class MoveIt:
         return res is not None and res.success
 
     def remove(self, o):
-        # xoa tung khoi rieng: neu xoa chung ma 1 khoi chua co thi ca lenh bi tu choi
+        # xoa tung khoi rieng (xoa chung de bi tu choi)
         ps = PlanningScene()
         ps.world.collision_objects = [mk_box(o, (0, 0, 0), (0, 0, 0), op=CollisionObject.REMOVE)]
         self.apply(ps)
 
     def setup_scene(self):
-        """Them ban vao planning scene, xoa cac khoi cu (ke ca khoi con dinh o tool)."""
+        # bo khoi dang gan o tool
         ps = PlanningScene()
         for o in self.sc.objs:
             a = AttachedCollisionObject()
@@ -150,19 +153,24 @@ class MoveIt:
             a.object.operation = CollisionObject.REMOVE
             ps.robot_state.attached_collision_objects.append(a)
         self.apply(ps)
+        # xoa khoi cu
         for o in self.sc.objs:
             self.remove(o)
-        tb, h = self.sc.tb, self.sc.tb['h']
+        # them ban
+        tb = self.sc.tb
+        h = tb['h']
         ps = PlanningScene()
         ps.world.collision_objects = [mk_box('table', (tb['sx'], tb['sy'], h),
                                              (tb['x'], tb['y'], h / 2))]
         return self.apply(ps)
 
     def set_objects(self):
-        """Cap nhat cac khoi trong planning scene theo ket qua camera."""
-        sc, s = self.sc, self.sc.cube
+        # cap nhat khoi theo camera
+        sc = self.sc
+        s = sc.cube
         ps = PlanningScene()
-        for o, p in sc.pos.items():
+        for o in sc.pos:
+            p = sc.pos[o]
             if o == sc.held:
                 continue
             if p is None:
@@ -172,8 +180,7 @@ class MoveIt:
         return self.apply(ps)
 
     def attach(self, o):
-        """Gan khoi vao tool0 -> MoveIt check va cham ca khoi dang cam.
-        Hop nho hon khoi that 1 chut, vi luc bat dau nhac khoi van cham mat ban."""
+        # gan khoi vao tool0 (hop nho hon 1 chut de khong cham ban)
         self.remove(o)
         s = self.sc.cube - self.sc.shrink
         a = AttachedCollisionObject()
@@ -182,10 +189,12 @@ class MoveIt:
         a.touch_links = ['tool0', 'grip_base', 'finger_l', 'finger_r', 'wrist_3_link']
         ps = PlanningScene()
         ps.robot_state.attached_collision_objects = [a]
-        return 'SUCCESS' if self.apply(ps) else 'FAILED'
+        if self.apply(ps):
+            return 'SUCCESS'
+        return 'FAILED'
 
     def detach(self, o, p, yaw):
-        """Bo khoi khoi tool0, dat lai khoi vao planning scene tai p."""
+        # bo khoi khoi tool0
         a = AttachedCollisionObject()
         a.link_name = self.sc.ee
         a.object.id = o
@@ -193,17 +202,21 @@ class MoveIt:
         ps = PlanningScene()
         ps.robot_state.attached_collision_objects = [a]
         self.apply(ps)
+        # dat lai khoi tai p
         s = self.sc.cube
         ps = PlanningScene()
         ps.world.collision_objects = [mk_box(o, (s, s, s), (p[0], p[1], self.sc.z_cube), yaw)]
-        return 'SUCCESS' if self.apply(ps) else 'FAILED'
+        if self.apply(ps):
+            return 'SUCCESS'
+        return 'FAILED'
 
     # ---------------- gripper
     def grip(self, close):
-        """Gui luc mo / kep roi cho 2s cho ngon tay dung yen.
-        Tra ve khe ho giua 2 ngon (= be rong vat neu dang kep)."""
-        f = self.sc.grip['force'] * (-1 if close else 1)
-        self.grip_pub.publish(Float64MultiArray(data=[f, f]))
+        # gui luc, cho 2s, tra ve khe ho 2 ngon
+        f = self.sc.grip['force']
+        if close:
+            f = -f
+        self.gp.publish(Float64MultiArray(data=[f, f]))
         time.sleep(2.0)
         return sum(self.fingers())
 
@@ -235,20 +248,20 @@ class MoveIt:
         return st
 
     def move_q(self, q):
-        """Di toi 6 goc khop q."""
+        # di toi 6 goc khop q
         c = Constraints()
-        for n, v in zip(JOINTS, q):
+        for i in range(6):
             j = JointConstraint()
-            j.joint_name = n
-            j.position = float(v)
-            j.tolerance_above = j.tolerance_below = 0.01
+            j.joint_name = JOINTS[i]
+            j.position = float(q[i])
+            j.tolerance_above = 0.01
+            j.tolerance_below = 0.01
             j.weight = 1.0
             c.joint_constraints.append(j)
         return self.send(c)
 
     def ik(self, p, yaw):
-        """Tinh goc khop de tool0 o diem p, huong xuong, xoay goc yaw quanh truc dung.
-        Seed luon la tu the 'seed' -> lan nao cung ra tu the giong nhau, khong bi xoan khop."""
+        # IK: tool0 tai p, huong xuong, xoay yaw (seed co dinh)
         req = GetPositionIK.Request()
         r = req.ik_request
         r.group_name = self.sc.group
@@ -258,27 +271,31 @@ class MoveIt:
         r.robot_state.joint_state.name = JOINTS
         r.robot_state.joint_state.position = [float(v) for v in self.sc.seed_q]
         r.pose_stamped.header.frame_id = self.sc.frame
-        # tool huong xuong + xoay yaw: q = (cos(yaw/2), sin(yaw/2), 0, 0)
         r.pose_stamped.pose = mk_pose(p, (math.cos(yaw / 2), math.sin(yaw / 2), 0.0, 0.0))
         res = wait(self.ikc.call_async(req), 5.0)
         if res is None or res.error_code.val != MoveItErrorCodes.SUCCESS:
             return None
-        d = dict(zip(res.solution.joint_state.name, res.solution.joint_state.position))
+        js = res.solution.joint_state
+        d = {}
+        for i in range(len(js.name)):
+            d[js.name[i]] = js.position[i]
         return [d[n] for n in JOINTS]
 
     def move_xyz(self, p, yaw):
-        """Dua tool0 toi diem p: IK ra goc khop roi cho MoveIt lap ke hoach."""
+        # IK roi lap ke hoach
         q = self.ik(p, yaw)
         if q is None:
             return 'PLANNING_FAILED'
         return self.move_q(q)
 
     def move_z(self, z):
-        """Di thang dung toi do cao z, giu nguyen x, y va huong tool."""
+        # di thang dung toi do cao z
         t = self.tool()
         if t is None:
             return 'FAILED'
-        (x, y, _), q = t
+        x = t[0][0]
+        y = t[0][1]
+        q = t[1]
         req = GetCartesianPath.Request()
         req.header.frame_id = self.sc.frame
         req.start_state.is_diff = True
@@ -291,6 +308,7 @@ class MoveIt:
         res = wait(self.cart.call_async(req), 15.0)
         if res is None or res.fraction < 0.98:
             return 'PLANNING_FAILED'
+        # chay quy dao
         g = ExecuteTrajectory.Goal()
         g.trajectory = res.solution
         h = wait(self.ex.send_goal_async(g), 10.0)

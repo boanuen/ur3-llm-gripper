@@ -1,4 +1,4 @@
-"""Doc scene.yaml + trang thai the gioi (lay tu camera): khoi nao o dau, zone nao trong."""
+"""Doc scene.yaml va luu trang thai cac khoi."""
 import copy
 import math
 import os
@@ -7,7 +7,7 @@ import yaml
 
 
 def cfg_path(n):
-    """Duong dan file trong config: lay trong workspace da build, neu khong trong source."""
+    # file config: uu tien thu muc da build, khong co thi lay trong source
     try:
         from ament_index_python.packages import get_package_share_directory
         p = os.path.join(get_package_share_directory('ur3_llm_control'), 'config', n)
@@ -29,7 +29,7 @@ class Scene:
         self.cube = d['cube']
         self.zones = d['zones']
         self.objs = d['objects']
-        self.spawn = d['spawn']          # chi dung de sinh world Gazebo
+        self.spawn = d['spawn']          # chi dung sinh world Gazebo
         self.cam = d['camera']
         self.grip = d['gripper']
         self.home_q = d['home']
@@ -39,22 +39,25 @@ class Scene:
         self.gap = d['gap']
         self.vel = d['vel']
 
-        # do cao cua tool0
-        h, g = self.tb['h'], self.grip
-        self.z_cube = h + self.cube / 2                  # tam khoi tren ban
-        self.z_top = h + self.cube                       # mat tren khoi (camera nhin thay)
+        # cac do cao
+        h = self.tb['h']
+        g = self.grip
+        self.z_cube = h + self.cube / 2                  # tam khoi
+        self.z_top = h + self.cube                       # mat tren khoi
         self.z_grasp = h + g['tip'] + g['len']           # tool0 khi gap
-        self.z_place = self.z_grasp + 0.004              # tool0 khi dat (cao hon 4mm)
+        self.z_place = self.z_grasp + 0.004              # tool0 khi dat
         self.z_up = self.z_grasp + d['up']               # tool0 khi o tren vat
-        self.d_hold = self.z_grasp - self.z_cube         # tool0 -> tam khoi dang cam
+        self.d_hold = self.z_grasp - self.z_cube         # tool0 -> tam khoi
 
-        # trang thai: pos[obj] = (x, y, yaw) do camera thay, None = khong thay
-        self.pos = {o: None for o in self.objs}
+        # pos[obj] = (x, y, yaw), None = khong thay
+        self.pos = {}
+        for o in self.objs:
+            self.pos[o] = None
         self.held = None
 
-    # ----------------------------------------------------------- trang thai
+    # ---------------- trang thai
     def update(self, det):
-        """Cap nhat tu ket qua camera {obj: (x, y, yaw)}. Vat dang cam giu nguyen."""
+        # cap nhat tu camera, bo qua vat dang cam
         for o in self.objs:
             if o != self.held:
                 self.pos[o] = det.get(o)
@@ -68,7 +71,7 @@ class Scene:
         return abs(p[0] - zx) < k and abs(p[1] - zy) < k
 
     def where(self, obj):
-        """'zone_x', 'table', 'gripper' hoac None (camera khong thay)."""
+        # tra ve zone, 'table', 'gripper' hoac None
         if obj == self.held:
             return 'gripper'
         p = self.pos[obj]
@@ -80,52 +83,67 @@ class Scene:
         return 'table'
 
     def who(self, zone, skip=None):
-        """Khoi dang nam trong zone (None = zone trong)."""
+        # khoi trong zone, None = trong
         for o in self.objs:
             if o != skip and self.where(o) == zone:
                 return o
         return None
 
     def free_pos(self, near):
-        """Tim 1 vi tri trong tren ban: khong trong zone, cach cac khoi khac >= gap,
-        robot voi toi duoc. Chon diem gan 'near' nhat (de di chuyen ngan)."""
+        # quet luoi tren ban, chon diem trong gan 'near' nhat
         t = self.tb
-        best, bd = None, 1e9
+        best = None
+        bd = 1e9
         x = t['x'] - t['sx'] / 2 + 0.05
         while x <= t['x'] + t['sx'] / 2 - 0.05:
             y = t['y'] - t['sy'] / 2 + 0.06
             while y <= t['y'] + t['sy'] / 2 - 0.06:
                 if self.free_ok((x, y)):
-                    dd = math.hypot(x - near[0], y - near[1])
-                    if dd < bd:
-                        best, bd = (round(x, 3), round(y, 3)), dd
+                    d = math.hypot(x - near[0], y - near[1])
+                    if d < bd:
+                        best = (round(x, 3), round(y, 3))
+                        bd = d
                 y += 0.02
             x += 0.02
         return best
 
     def free_ok(self, p):
+        # ngoai tam voi
         r = math.hypot(p[0], p[1])
-        if r < 0.20 or r > 0.42:                          # ngoai tam voi cua UR3e
+        if r < 0.20 or r > 0.42:
             return False
+        # gan zone
         for z in self.zones:
             zx, zy = self.xy(z)
             if math.hypot(p[0] - zx, p[1] - zy) < self.gap:
                 return False
-        for o, q in self.pos.items():
-            if q is not None and o != self.held and math.hypot(p[0] - q[0], p[1] - q[1]) < self.gap:
+        # gan khoi khac
+        for o in self.pos:
+            q = self.pos[o]
+            if q is None or o == self.held:
+                continue
+            if math.hypot(p[0] - q[0], p[1] - q[1]) < self.gap:
                 return False
         return True
 
     def state(self):
-        """Trang thai de in ra / gui LLM."""
+        # {obj: vi tri} de in / gui LLM
         out = {}
         for o in self.objs:
             w = self.where(o)
-            out[o] = 'not seen' if w is None else w
+            if w is None:
+                w = 'not seen'
+            out[o] = w
         return out
 
     def zone_state(self):
-        return {z: (self.who(z) or 'free') for z in self.zones}
+        out = {}
+        for z in self.zones:
+            o = self.who(z)
+            if o is None:
+                o = 'free'
+            out[z] = o
+        return out
 
     def copy(self):
         return copy.deepcopy(self)

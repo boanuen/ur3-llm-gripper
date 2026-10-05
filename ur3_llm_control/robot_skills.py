@@ -1,8 +1,4 @@
-"""Cac robot skill. Moi skill tra ve 1 trang thai (SUCCESS, FAILED, ...).
-
-rb  : MoveIt + gripper (moveit_if.MoveIt) hoac robot gia khi test (fake_robot.Fake)
-cam : camera that (vision.Camera) hoac camera gia, cam.capture() -> {ten_khoi: (x, y, yaw)}
-"""
+"""Cac skill cua robot, moi skill tra ve 1 trang thai."""
 OK = 'SUCCESS'
 
 
@@ -14,27 +10,33 @@ class Skills:
         self.log = log
 
     def say(self, s):
-        self.log('    ' + s)       # in thut vao de phan biet voi dong ket qua
+        self.log('    ' + s)
 
     def home(self):
         return self.rb.move_q(self.sc.home_q)
 
     # ---------------- camera
     def detect_objects(self):
-        """Ve home (de tay khong che camera), chup anh, cap nhat vi tri cac khoi."""
         if self.sc.held:
             return 'FAILED'
+        # ve home de tay khong che camera
         if not self.rb.at(self.sc.home_q):
             st = self.home()
             if st != OK:
                 return st
+        # chup anh
         det = self.cam.capture()
         if det is None:
             self.say('khong nhan duoc anh tu camera')
             return 'FAILED'
         self.sc.update(det)
-        self.rb.set_objects()       # dua cac khoi vao planning scene de MoveIt tranh
-        seen = [f'{o}@{w}' for o, w in self.sc.state().items() if w != 'not seen']
+        self.rb.set_objects()
+        # in cac khoi thay duoc
+        seen = []
+        st = self.sc.state()
+        for o in st:
+            if st[o] != 'not seen':
+                seen.append(o + '@' + st[o])
         self.say('camera thay: ' + ', '.join(seen))
         return OK
 
@@ -45,7 +47,10 @@ class Skills:
         if st != OK:
             return st
         o = self.sc.who(zone)
-        self.say(f'{zone}: ' + (f'dang co {o}' if o else 'trong'))
+        if o:
+            self.say(f'{zone}: dang co {o}')
+        else:
+            self.say(f'{zone}: trong')
         return OK
 
     def find_object(self, obj):
@@ -56,8 +61,10 @@ class Skills:
         return OK
 
     def find_free_position(self, obj):
-        """Tim cho trong tren ban, gan khoi nhat (de di chuyen ngan)."""
-        p = self.sc.pos[obj] or (self.sc.tb['x'], self.sc.tb['y'])
+        # cho trong gan khoi nhat
+        p = self.sc.pos[obj]
+        if p is None:
+            p = (self.sc.tb['x'], self.sc.tb['y'])
         q = self.sc.free_pos(p)
         self.say(f'find_free_position({obj}) -> {q}')
         return q
@@ -65,11 +72,13 @@ class Skills:
     # ---------------- gripper
     def open_gripper(self):
         gap = self.rb.grip(False)
-        return OK if gap > self.sc.grip['open'] - 0.012 else 'FAILED'
+        if gap > self.sc.grip['open'] - 0.012:
+            return OK
+        return 'FAILED'
 
     def close_gripper(self, obj):
         gap = self.rb.grip(True)
-        # neu 2 ngon dong sat vao nhau tuc la khong kep trung vat
+        # 2 ngon dong sat -> kep truot
         if gap < self.sc.grip['min_gap']:
             self.say(f'kep truot (khe ho {gap:.3f} m)')
             self.rb.grip(False)
@@ -83,11 +92,11 @@ class Skills:
         if obj not in sc.objs:
             return 'INVALID_OBJECT'
         if sc.held:
-            return 'FAILED'                     # dang cam vat khac
+            return 'FAILED'
         p = sc.pos[obj]
         if p is None:
             return 'OBJECT_NOT_FOUND'
-        yaw = sc.tool_yaw + p[2]                # xoay co tay cho ngon tay song song mat khoi
+        yaw = sc.tool_yaw + p[2]                # xoay tay theo khoi
 
         st = self.open_gripper()
         if st == OK:
@@ -101,7 +110,7 @@ class Skills:
         if st != OK:
             return st
 
-        # nhac len xong ma ngon tay dong het -> vat bi roi
+        # kiem tra vat bi roi
         if sum(self.rb.fingers()) < sc.grip['min_gap']:
             self.say(f'{obj} bi roi khi nhac len')
             self.rb.detach(obj, p, p[2])
@@ -112,9 +121,9 @@ class Skills:
 
     def place_at(self, obj, xy):
         sc = self.sc
-        st = self.rb.move_xyz((xy[0], xy[1], sc.z_up), sc.tool_yaw)
+        st = self.rb.move_xyz((xy[0], xy[1], sc.z_up), sc.tool_yaw)   # len tren diem dat
         if st == OK:
-            st = self.rb.move_z(sc.z_place)     # ha xuong (cao hon mat ban vai mm)
+            st = self.rb.move_z(sc.z_place)     # ha xuong
         if st == OK:
             st = self.open_gripper()            # tha vat
         if st != OK:
@@ -131,7 +140,7 @@ class Skills:
         if zone not in sc.zones:
             return 'INVALID_ZONE'
         if sc.held != obj:
-            return 'FAILED'                     # khong cam dung vat
+            return 'FAILED'
         o = sc.who(zone, skip=obj)
         if o:
             self.say(f'{zone} dang co {o}')
@@ -147,8 +156,7 @@ class Skills:
         return self.place_at(obj, q)
 
     def clear_zone(self, zone, keep=None):
-        """Zone dang co vat thi dua vat do ra cho trong tren ban.
-        keep: vat sap duoc dat vao zone nay, neu no da nam san trong zone thi thoi."""
+        # don vat trong zone ra cho trong (bo qua neu la vat keep)
         st = self.check_zone(zone)
         if st != OK:
             return st

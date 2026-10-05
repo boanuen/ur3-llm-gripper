@@ -1,6 +1,6 @@
 """Ca nhan hoa: P = (2 so cuoi MSSV) mod 6."""
 
-# P -> mau o Zone A, Zone B, Zone C
+# P -> mau o Zone A, B, C
 TB = {
     0: ('red', 'yellow', 'blue'),
     1: ('red', 'blue', 'yellow'),
@@ -16,14 +16,15 @@ def get_p(sid):
 
 
 def assign(sid):
-    """{'zone_a': 'red_cube', 'zone_b': ..., 'zone_c': ...}"""
-    a, b, c = TB[get_p(sid)]
-    return {'zone_a': a + '_cube', 'zone_b': b + '_cube', 'zone_c': c + '_cube'}
+    # {'zone_a': 'red_cube', ...}
+    c = TB[get_p(sid)]
+    return {'zone_a': c[0] + '_cube', 'zone_b': c[1] + '_cube', 'zone_c': c[2] + '_cube'}
 
 
 def info(name, sid):
+    a = assign(sid)
     s = f'Student: {name} ({sid})\n'
     s += f'P = {str(sid)[-2:]} mod 6 = {get_p(sid)}\n'
-    for z, o in assign(sid).items():
-        s += f'  Zone {z[-1].upper()} -> {o}\n'
+    for z in a:
+        s += f'  Zone {z[-1].upper()} -> {a[z]}\n'
     return s.rstrip()

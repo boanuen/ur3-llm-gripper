@@ -1,9 +1,8 @@
-"""Sinh file world Gazebo (SDF) tu scene.yaml: ban, 3 zone, 5 khoi (vat ly that), camera.
-Ban va zone mau xam/trang de khong lan voi mau cac khoi khi nhan dang."""
+"""Sinh world Gazebo (SDF) tu scene.yaml: ban, zone, khoi, camera."""
 
 
 def color(rgba):
-    c = ' '.join(str(v) for v in rgba)
+    c = ' '.join([str(v) for v in rgba])
     return f'<material><ambient>{c}</ambient><diffuse>{c}</diffuse></material>'
 
 
@@ -19,7 +18,7 @@ def static_box(name, p, size, rgba, coll=True):
 
 
 def cube(name, p, s, rgba):
-    """Khoi lap phuong dong (co trong luc, ma sat) -> gripper phai kep that."""
+    # khoi dong (co trong luc, ma sat)
     m = 0.05
     i = m * s * s / 6
     g = f'<geometry><box><size>{s} {s} {s}</size></box></geometry>'
@@ -68,17 +67,24 @@ def camera(c):
 
 
 def make_world(sc):
-    t, h, s = sc.tb, sc.tb['h'], sc.cube
+    t = sc.tb
+    h = t['h']
+    s = sc.cube
+    # ban
     ms = [static_box('work_table', (t['x'], t['y'], h / 2), (t['sx'], t['sy'], h),
                      (0.75, 0.75, 0.75, 1))]
-    for n, z in sc.zones.items():
-        x, y = z['xy']
-        k = z['size']
+    # zone: vien den + nen trang
+    for n in sc.zones:
+        x, y = sc.zones[n]['xy']
+        k = sc.zones[n]['size']
         ms.append(static_box(n + '_border', (x, y, h + 0.0005), (k + 0.012, k + 0.012, 0.001),
                              (0.15, 0.15, 0.15, 1), coll=False))
         ms.append(static_box(n, (x, y, h + 0.001), (k, k, 0.001), (1, 1, 1, 1), coll=False))
-    for n, (x, y) in sc.spawn.items():
+    # khoi
+    for n in sc.spawn:
+        x, y = sc.spawn[n]
         ms.append(cube(n, (x, y, h + s / 2 + 0.002), s, sc.objs[n]['rgba']))
+    # camera
     ms.append(camera(sc.cam))
     return f"""<?xml version="1.0"?>
 <sdf version="1.6">

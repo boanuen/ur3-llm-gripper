@@ -1,5 +1,4 @@
-""" ros2 run ur3_llm_control send_command "Dua khoi mau do vao vung B."
-"""
+"""Gui lenh: ros2 run ur3_llm_control send_command "Dua khoi mau do vao vung B." """
 import sys
 import time
 
@@ -15,8 +14,9 @@ def main():
     rclpy.init()
     nd = rclpy.create_node('send_command')
     pub = nd.create_publisher(String, '/llm_robot/command', 10)
+    # cho node nhan ket noi (toi da 5s)
     t = time.time()
-    while pub.get_subscription_count() == 0 and time.time() - t < 5:   # cho node nhan
+    while pub.get_subscription_count() == 0 and time.time() - t < 5:
         rclpy.spin_once(nd, timeout_sec=0.1)
     pub.publish(String(data=' '.join(args)))
     rclpy.spin_once(nd, timeout_sec=0.3)

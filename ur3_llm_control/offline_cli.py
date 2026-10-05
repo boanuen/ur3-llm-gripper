@@ -1,9 +1,8 @@
-"""Thu phan LLM khong can ROS (9Router that + robot gia).
+"""Thu LLM khong can ROS (robot gia).
 
     python3 -m ur3_llm_control.offline_cli "Move the blue cube to zone C."
-    python3 -m ur3_llm_control.offline_cli          # go nhieu lenh
 """
-import readline  # noqa: F401  (go/xoa tieng Viet dung trong Command>)
+import readline  # noqa: F401  (go tieng Viet trong Command>)
 import sys
 
 import yaml
@@ -19,16 +18,22 @@ from .student import info
 def main():
     sc = Scene(cfg_path('scene.yaml'))
     with open(cfg_path('student_config.yaml'), encoding='utf-8') as f:
-        st = yaml.safe_load(f)
-    # robot + camera gia: cac khoi bat dau o vi tri spawn
-    rb = Fake(sc, {o: (x, y, 0.0) for o, (x, y) in sc.spawn.items()})
+        cfg = yaml.safe_load(f)
+    # khoi bat dau o vi tri spawn
+    truth = {}
+    for o in sc.spawn:
+        x, y = sc.spawn[o]
+        truth[o] = (x, y, 0.0)
+    rb = Fake(sc, truth)
     sk = Skills(sc, rb, FakeCam(rb))
-    pl = Planner(st['llm'], sc, st['student_name'], st['student_id'])
-    print(info(st['student_name'], st['student_id']))
+    pl = Planner(cfg['llm'], sc, cfg['student_name'], cfg['student_id'])
+    print(info(cfg['student_name'], cfg['student_id']))
 
+    # lenh tu tham so
     if len(sys.argv) > 1:
         run_cmd(' '.join(sys.argv[1:]), pl, sk)
         return 0
+    # go lenh
     while True:
         try:
             cmd = input('\nCommand> ').strip()

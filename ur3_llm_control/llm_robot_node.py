@@ -1,14 +1,12 @@
-"""Node ROS 2 dieu khien UR3/UR3e bang ngon ngu tu nhien.
+"""Node ROS 2 dieu khien UR3 bang ngon ngu tu nhien.
 
-  ros2 run ur3_llm_control llm_robot_node                        # go lenh truc tiep
+  ros2 run ur3_llm_control llm_robot_node
   ros2 run ur3_llm_control llm_robot_node --ros-args -p command:="Put the red cube in zone B."
-  ros2 run ur3_llm_control send_command "Move the blue cube to zone C."   # gui qua topic
-
-Topic:  /llm_robot/command (sub, String)   /llm_robot/plan, /llm_robot/result (pub, String)
+  ros2 run ur3_llm_control send_command "Move the blue cube to zone C."
 """
 import json
 import queue
-import readline  # noqa: F401  (go/xoa tieng Viet dung trong Command>)
+import readline  # noqa: F401  (go tieng Viet trong Command>)
 import sys
 import threading
 import time
@@ -36,19 +34,25 @@ class LLMNode(Node):
         super().__init__('llm_robot_node')
         self.declare_parameter('command', '')        # chay 1 lenh roi thoat
         self.declare_parameter('interactive', True)  # go lenh tu ban phim
-        self.declare_parameter('fake', False)        # True: khong dung MoveIt
+        self.declare_parameter('fake', False)        # robot gia
         self.declare_parameter('model', '')          # doi model LLM
 
+        # doc config
         self.sc = Scene(cfg_path('scene.yaml'))
         with open(cfg_path('student_config.yaml'), encoding='utf-8') as f:
-            st = yaml.safe_load(f)
-        self.name, self.sid = st['student_name'], st['student_id']
-        llm = st['llm']
+            cfg = yaml.safe_load(f)
+        self.name = cfg['student_name']
+        self.sid = cfg['student_id']
+        llm = cfg['llm']
         if self.get_parameter('model').value:
             llm['model'] = self.get_parameter('model').value
 
-        if self.get_parameter('fake').value:     # robot + camera gia (test khong can Gazebo)
-            truth = {o: (x, y, 0.0) for o, (x, y) in self.sc.spawn.items()}
+        # robot + camera
+        if self.get_parameter('fake').value:
+            truth = {}
+            for o in self.sc.spawn:
+                x, y = self.sc.spawn[o]
+                truth[o] = (x, y, 0.0)
             self.rb = Fake(self.sc, truth)
             self.cam = FakeCam(self.rb)
         else:
@@ -60,10 +64,14 @@ class LLMNode(Node):
         self.pl = Planner(llm, self.sc, self.name, self.sid)
         self.llm = llm
 
+        # topic
         self.q = queue.Queue()
-        self.create_subscription(String, '/llm_robot/command', lambda m: self.q.put(m.data), 10)
+        self.create_subscription(String, '/llm_robot/command', self.on_cmd, 10)
         self.plan_pub = self.create_publisher(String, '/llm_robot/plan', 10)
         self.res_pub = self.create_publisher(String, '/llm_robot/result', 10)
+
+    def on_cmd(self, m):
+        self.q.put(m.data)
 
     def setup(self):
         if isinstance(self.rb, Fake):
@@ -77,7 +85,8 @@ class LLMNode(Node):
             return False
         out('[setup] da them ban vao planning scene')
         out(f'[setup] open_gripper() ... {self.sk.open_gripper()}')
-        for i in range(3):                 # thu lai neu Gazebo con dang khoi dong
+        # ve home, thu lai neu Gazebo chua san sang
+        for i in range(3):
             st = self.sk.home()
             out(f'[setup] home() ... {st}')
             if st == 'SUCCESS':
@@ -100,9 +109,10 @@ class LLMNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     nd = LLMNode()
+    # spin o thread rieng
     ex = MultiThreadedExecutor(num_threads=4)
     ex.add_node(nd)
-    th = threading.Thread(target=ex.spin, daemon=True)     # spin o thread rieng
+    th = threading.Thread(target=ex.spin, daemon=True)
     th.start()
 
     out('=' * 50)
@@ -111,24 +121,29 @@ def main(args=None):
     out(f"LLM: {nd.llm['model']} @ {nd.llm['base_url']}")
     out('=' * 50)
     code = 0
+    cmd = nd.get_parameter('command').value
     try:
         if not nd.setup():
             code = 1
-        elif nd.get_parameter('command').value:
-            rep = nd.do_cmd(nd.get_parameter('command').value)
-            code = 0 if rep['status'] == 'TASK SUCCESS' else 2
+        elif cmd:
+            # chay 1 lenh
+            rep = nd.do_cmd(cmd)
+            if rep['status'] != 'TASK SUCCESS':
+                code = 2
         elif nd.get_parameter('interactive').value and sys.stdin.isatty():
+            # go lenh tu ban phim
             out("Nhap lenh ('state' xem trang thai, 'q' de thoat)")
             while True:
                 cmd = input('\nCommand> ').strip()
                 if cmd in ('q', 'quit', 'exit'):
                     break
-                if cmd == 'state':              # chup lai va in trang thai
+                if cmd == 'state':
                     nd.sk.detect_objects()
                     show_state(nd.sc, out)
                 elif cmd:
                     nd.do_cmd(cmd)
         else:
+            # nhan lenh qua topic
             out('Cho lenh tren topic /llm_robot/command ...')
             while rclpy.ok():
                 try:
@@ -138,8 +153,9 @@ def main(args=None):
                 nd.do_cmd(cmd)
     except (KeyboardInterrupt, EOFError):
         pass
+    # dung spin truoc roi moi huy node
     if rclpy.ok():
-        rclpy.shutdown()      # dung spin truoc roi moi huy node
+        rclpy.shutdown()
     th.join(timeout=3)
     ex.shutdown()
     nd.destroy_node()

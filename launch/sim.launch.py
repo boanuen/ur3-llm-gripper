@@ -1,10 +1,6 @@
-"""Gazebo + UR3e co gripper + camera + ros2_control + MoveIt 2 + RViz.
+"""Gazebo + UR3e + gripper + camera + MoveIt 2 + RViz.
 
-    ros2 launch ur3_llm_control sim.launch.py
     ros2 launch ur3_llm_control sim.launch.py gazebo_gui:=false launch_rviz:=false
-
-World (ban, 3 zone, 5 khoi, camera) sinh tu config/scene.yaml.
-MoveIt dung URDF/SRDF co gripper (urdf/, srdf/) de check va cham ca gripper.
 """
 import os
 import tempfile
@@ -51,7 +47,7 @@ def setup(context):
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([FindPackageShare('gazebo_ros'), '/launch/gazebo.launch.py']),
         launch_arguments={'gui': LaunchConfiguration('gazebo_gui'), 'world': world}.items())
-    # timeout 120s: tren WSL gzserver co luc khoi dong ~30s
+    # timeout 120s vi gzserver tren WSL khoi dong cham
     spawn = Node(package='gazebo_ros', executable='spawn_entity.py',
                  arguments=['-entity', 'ur', '-topic', 'robot_description', '-timeout', '120'],
                  output='screen')

@@ -1,14 +1,6 @@
-"""Plan Validator: kiem tra plan cua LLM truoc khi cho robot chay.
+"""Kiem tra plan cua LLM truoc khi cho robot chay."""
 
-1. Dung dinh dang {"plan": [...]}
-2. Skill nam trong danh sach cho phep, dung tham so (khong co joint, trajectory...)
-3. Object / zone ton tai; object phai duoc camera nhin thay
-4. Logic: khong pick khi dang cam vat, chi place vat dang cam, chi dung camera khi tay trong,
-   ket thuc tay phai trong
-5. An toan: truoc place(x, zone) phai co clear_zone(zone) -> neu thieu thi tu chen vao
-"""
-
-# Danh sach skill LLM duoc dung: ten -> tham so
+# skill duoc phep: ten -> tham so
 SKILLS = {
     'detect_objects': [],
     'check_zone': ['zone'],
@@ -24,9 +16,12 @@ MAX_STEPS = 30
 
 
 def to_str(s):
-    """{'skill': 'place', 'object': 'red_cube', 'zone': 'zone_b'} -> place(red_cube, zone_b)"""
-    args = [str(s.get(k)) for k in SKILLS.get(s.get('skill'), [])]
-    return f"{s.get('skill')}({', '.join(args)})"
+    # {'skill': 'place', 'object': 'red_cube', 'zone': 'zone_b'} -> place(red_cube, zone_b)
+    n = s.get('skill')
+    args = []
+    for k in SKILLS.get(n, []):
+        args.append(str(s.get(k)))
+    return f"{n}({', '.join(args)})"
 
 
 def clean(v):
@@ -35,6 +30,7 @@ def clean(v):
 
 def check(raw, sc):
     """Tra ve (plan, errs). errs rong = hop le."""
+    # 1. dinh dang
     if not isinstance(raw, dict) or not isinstance(raw.get('plan'), list):
         return [], ['output phai co dang {"plan": [...]}']
     steps = raw['plan']
@@ -43,8 +39,11 @@ def check(raw, sc):
     if len(steps) > MAX_STEPS:
         return [], [f'plan qua dai ({len(steps)} buoc)']
 
-    plan, errs = [], []
-    for i, st in enumerate(steps, 1):
+    # 2. skill, tham so, object, zone
+    plan = []
+    errs = []
+    for i in range(1, len(steps) + 1):
+        st = steps[i - 1]
         if not isinstance(st, dict):
             errs.append(f'buoc {i}: khong phai object JSON')
             continue
@@ -53,10 +52,13 @@ def check(raw, sc):
             errs.append(f'buoc {i}: skill "{sk}" khong duoc phep')
             continue
         keys = SKILLS[sk]
-        extra = [k for k in st if k != 'skill' and k not in keys]
-        if extra:
-            # vd LLM sinh "joints", "trajectory" -> tu choi
-            errs.append(f'buoc {i}: tham so khong hop le {extra} cho {sk}')
+        bad = []
+        for k in st:
+            if k != 'skill' and k not in keys:
+                bad.append(k)
+        if bad:
+            # vd "joints", "trajectory"
+            errs.append(f'buoc {i}: tham so khong hop le {bad} cho {sk}')
             continue
         s = {'skill': sk}
         for k in keys:
@@ -74,9 +76,10 @@ def check(raw, sc):
     if errs:
         return plan, errs
 
-    # chay thu logic tay gap
+    # 3. chay thu logic tay gap
     held = sc.held
-    for i, s in enumerate(plan, 1):
+    for i in range(1, len(plan) + 1):
+        s = plan[i - 1]
         sk = s['skill']
         if sk == 'pick':
             if held:
@@ -92,31 +95,33 @@ def check(raw, sc):
         errs.append(f'plan ket thuc khi van con cam {held}')
     if errs:
         return plan, errs
+
+    # 4. them buoc an toan
     return add_safety(plan), []
 
 
 def add_safety(plan):
-    """Them cac buoc an toan neu LLM quen (danh dau note='auto'):
-    - detect_objects() o dau plan
-    - clear_zone(zone) truoc pick(x) neu sau do place(x, zone) ma chua don zone
-    - home() o cuoi plan"""
+    """Them detect_objects dau, clear_zone truoc pick, home cuoi (note='auto')."""
     out = []
     if plan[0]['skill'] != 'detect_objects':
         out.append({'skill': 'detect_objects', 'note': 'auto'})
-    cleared = set()
-    for i, s in enumerate(plan):
-        if s['skill'] == 'clear_zone':
-            cleared.add(s['zone'])
+    done = []           # zone da don
+    for i in range(len(plan)):
+        s = plan[i]
+        if s['skill'] == 'clear_zone' and s['zone'] not in done:
+            done.append(s['zone'])
+        # pick(x) ma sau do place(x, zone) chua don -> chen clear_zone
         if s['skill'] == 'pick':
             for t in plan[i + 1:]:
                 if t['skill'] in ('place', 'place_free') and t['object'] == s['object']:
                     z = t.get('zone')
-                    if z and z not in cleared:
+                    if z and z not in done:
                         out.append({'skill': 'clear_zone', 'zone': z, 'note': 'auto'})
-                        cleared.add(z)
+                        done.append(z)
                     break
         if s['skill'] in ('place', 'place_free', 'pick'):
-            cleared.discard(s.get('zone'))
+            if s.get('zone') in done:
+                done.remove(s.get('zone'))
         out.append(dict(s))
     if out[-1]['skill'] != 'home':
         out.append({'skill': 'home', 'note': 'auto'})

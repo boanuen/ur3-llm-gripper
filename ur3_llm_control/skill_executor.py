@@ -1,7 +1,4 @@
-"""Skill Executor: chay plan da duoc validator duyet va in ket qua ra terminal.
-
-Luong: camera -> LLM -> validator -> chay tung skill -> camera kiem tra lai ket qua.
-"""
+"""Chay plan da duoc validator duyet va in ket qua."""
 import json
 
 from .task_validator import to_str
@@ -11,7 +8,7 @@ OK_ST = ('SUCCESS', 'SKIPPED')
 
 
 def next_place(plan, i, obj):
-    """Buoc place(obj, ...) / place_free(obj) ngay sau pick(obj) o vi tri i."""
+    # tim buoc place obj ngay sau pick o vi tri i
     for j in range(i + 1, len(plan)):
         if plan[j]['skill'] in ('place', 'place_free') and plan[j]['object'] == obj:
             return j
@@ -41,31 +38,48 @@ def do_step(s, sk, keep=None):
     return 'FAILED'
 
 
+def line(lb, st):
+    # vd: pick(red_cube) ........ SUCCESS
+    return lb + ' ' + '.' * max(2, 34 - len(lb)) + ' ' + st
+
+
 def run(plan, sk, log=print):
-    """Chay tung buoc, dung lai khi co loi. Tra ve (ok, [(buoc, trang thai)])."""
-    ok, res, skip = True, [], set()
-    for i, s in enumerate(plan):
-        lb = to_str(s) + (' [auto]' if s.get('note') == 'auto' else '')
+    """Chay tung buoc, gap loi thi dung. Tra ve (ok, res)."""
+    ok = True
+    res = []
+    skip = []
+    for i in range(len(plan)):
+        s = plan[i]
+        lb = to_str(s)
+        if s.get('note') == 'auto':
+            lb += ' [auto]'
+
         if not ok:
             st = 'NOT RUN'
         elif i in skip:
             st = 'SKIPPED'
         else:
+            # vat se dat vao zone nay -> clear_zone khong don no
             keep = None
-            if s['skill'] == 'clear_zone':      # vat sap dat vao zone nay (neu co)
+            if s['skill'] == 'clear_zone':
                 for t in plan[i + 1:]:
                     if t['skill'] == 'place' and t['zone'] == s['zone']:
                         keep = t['object']
                         break
-            if s['skill'] == 'pick':            # vat da nam dung zone dich -> bo qua
+
+            # vat da o dung zone -> bo qua pick/place
+            if s['skill'] == 'pick':
                 j = next_place(plan, i, s['object'])
-                if j is not None and plan[j]['skill'] == 'place' \
-                        and sk.sc.where(s['object']) == plan[j]['zone']:
-                    skip.add(j)
-                    log(f'    {s["object"]} da o {plan[j]["zone"]} -> bo qua pick/place')
-                    res.append((lb, 'SKIPPED'))
-                    log(f'{lb} {"." * max(2, 34 - len(lb))} SKIPPED')
-                    continue
+                if j is not None and plan[j]['skill'] == 'place':
+                    z = plan[j]['zone']
+                    if sk.sc.where(s['object']) == z:
+                        skip.append(j)
+                        log(f'    {s["object"]} da o {z} -> bo qua pick/place')
+                        log(line(lb, 'SKIPPED'))
+                        res.append((lb, 'SKIPPED'))
+                        continue
+
+            # chay skill
             try:
                 st = do_step(s, sk, keep)
             except Exception as e:
@@ -73,26 +87,33 @@ def run(plan, sk, log=print):
                 st = 'FAILED'
             if st not in OK_ST:
                 ok = False
-        log(f'{lb} {"." * max(2, 34 - len(lb))} {st}')
+        log(line(lb, st))
         res.append((lb, st))
     return ok, res
 
 
 def fix_text(s):
-    """Bo byte loi UTF-8 truoc khi gui LLM."""
+    # bo byte loi UTF-8
     return s.encode('utf-8', 'surrogateescape').decode('utf-8', 'ignore').strip()
 
 
 def show_state(sc, log):
-    for o, w in sc.state().items():
+    st = sc.state()
+    for o in st:
         p = sc.pos[o]
-        xy = f' ({p[0]:.2f}, {p[1]:.2f})' if p else ''
-        log(f'  {o:12s} {w}{xy}')
-    log('  zones: ' + ', '.join(f'{z}={w}' for z, w in sc.zone_state().items()))
+        xy = ''
+        if p:
+            xy = f' ({p[0]:.2f}, {p[1]:.2f})'
+        log(f'  {o:12s} {st[o]}{xy}')
+    zs = sc.zone_state()
+    txt = []
+    for z in zs:
+        txt.append(z + '=' + zs[z])
+    log('  zones: ' + ', '.join(txt))
 
 
 def run_cmd(cmd, pl, sk, log=print):
-    """Toan bo luong: USER COMMAND -> camera -> LLM -> validator -> executor."""
+    """Lenh -> camera -> LLM -> validator -> chay."""
     cmd = fix_text(cmd)
     rep = {'command': cmd, 'plan': [], 'status': 'TASK FAILED'}
     log(BAR)
@@ -100,6 +121,7 @@ def run_cmd(cmd, pl, sk, log=print):
     log(cmd)
     log('')
 
+    # 1. camera
     if sk.detect_objects() != 'SUCCESS':
         log('CAMERA ERROR: khong lay duoc trang thai moi truong')
         log(BAR)
@@ -108,6 +130,7 @@ def run_cmd(cmd, pl, sk, log=print):
     show_state(sk.sc, log)
     log('')
 
+    # 2. LLM + validator
     try:
         plan, errs, ans = pl.plan(cmd)
     except RuntimeError as e:
@@ -127,20 +150,35 @@ def run_cmd(cmd, pl, sk, log=print):
         log(BAR)
         return rep
 
+    # in plan
     rep['plan'] = plan
     log('LLM PLAN:')
-    for i, s in enumerate(plan, 1):
-        log(f'{i}. {to_str(s)}' + ('   [auto: validator them vao]' if s.get('note') == 'auto' else ''))
+    js = []
+    for i in range(len(plan)):
+        s = plan[i]
+        txt = f'{i + 1}. {to_str(s)}'
+        if s.get('note') == 'auto':
+            txt += '   [auto: validator them vao]'
+        log(txt)
+        d = dict(s)
+        d.pop('note', None)
+        js.append(d)
     log('')
-    log('JSON: ' + json.dumps({'plan': [{k: v for k, v in s.items() if k != 'note'} for s in plan]}))
+    log('JSON: ' + json.dumps({'plan': js}))
     log('')
 
+    # 3. chay plan
     log('EXECUTION:')
     ok, res = run(plan, sk, log)
     rep['steps'] = res
-    rep['status'] = 'TASK SUCCESS' if ok else 'TASK FAILED'
+    if ok:
+        rep['status'] = 'TASK SUCCESS'
+    else:
+        rep['status'] = 'TASK FAILED'
     log('')
     log(rep['status'])
+
+    # 4. camera kiem tra lai
     if ok and sk.detect_objects() == 'SUCCESS':
         log('CAMERA (sau khi lam):')
         show_state(sk.sc, log)
