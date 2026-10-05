@@ -210,62 +210,7 @@ ros2 run ur3_llm_control offline_cli "Put red cube in Zone B."
 
 Trên WSL2: nếu cửa sổ Gazebo / RViz trống thì thêm `LIBGL_ALWAYS_SOFTWARE=1` trước lệnh launch.
 
-## 9. Kết quả
-
-Lệnh "Put the red cube in Zone B." (zone B đang có `blue_cube`):
-
-```
-CAMERA:
-  red_cube     table (0.22, -0.21)
-  yellow_cube  table (0.22, 0.06)
-  green_cube   zone_c (0.38, -0.16)
-  blue_cube    zone_b (0.38, 0.00)
-  purple_cube  table (0.24, 0.26)
-  zones: zone_a=free, zone_b=blue_cube, zone_c=green_cube
-
-LLM PLAN:
-1. detect_objects()
-2. check_zone(zone_b)
-3. clear_zone(zone_b)
-4. pick(red_cube)
-5. place(red_cube, zone_b)
-6. home()
-
-EXECUTION:
-detect_objects() .................. SUCCESS
-    zone_b: dang co blue_cube
-check_zone(zone_b) ................ SUCCESS
-    don zone_b: pick(blue_cube) -> place_free(blue_cube)
-    find_free_position(blue_cube) -> (0.28, -0.04)
-clear_zone(zone_b) ................ SUCCESS
-pick(red_cube) .................... SUCCESS
-place(red_cube, zone_b) ........... SUCCESS
-home() ............................ SUCCESS
-
-TASK SUCCESS
-CAMERA (sau khi lam):
-  zones: zone_a=free, zone_b=red_cube, zone_c=green_cube
-```
-
-Lệnh "Arrange all objects according to my student ID." (14 bước, dọn 2 zone bị chiếm):
-
-```
-clear_zone(zone_a) ................ SKIPPED
-pick(red_cube) .................... SUCCESS
-place(red_cube, zone_a) ........... SUCCESS
-clear_zone(zone_b) ................ SUCCESS     (blue_cube -> (0.28, -0.04))
-pick(yellow_cube) ................. SUCCESS
-place(yellow_cube, zone_b) ........ SUCCESS
-clear_zone(zone_c) ................ SUCCESS     (green_cube -> (0.28, 0.08))
-pick(blue_cube) ................... SUCCESS
-place(blue_cube, zone_c) .......... SUCCESS
-home() ............................ SUCCESS
-
-TASK SUCCESS
-  zones: zone_a=red_cube, zone_b=yellow_cube, zone_c=blue_cube
-```
-
-## 10. Lỗi thường gặp
+## 9. Lỗi thường gặp
 
 | Hiện tượng | Cách xử lý |
 |---|---|
